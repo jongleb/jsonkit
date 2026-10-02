@@ -527,3 +527,65 @@ module Recursive_shapes = struct
   and 'a forest = Empty | Base of 'a tree * 'a forest
   [@@deriving jsonschema]
 end
+
+module Same_name_a = struct
+  type t = { next : t option; x : int } [@@deriving jsonschema]
+end
+
+module Same_name_b = struct
+  type t = { next : t option; y : string } [@@deriving jsonschema]
+end
+
+type same_name = { a : Same_name_a.t; b : Same_name_b.t }
+[@@deriving jsonschema]
+
+module Hoist = struct
+  let assoc fields : Jsonkit.Jsonschema.t = `Assoc fields
+  let string value : Jsonkit.Jsonschema.t = `String value
+  let ref_ name = assoc [ "$ref", string ("#/$defs/" ^ name) ]
+  let const value = assoc [ "const", string value ]
+
+  let nested_scope =
+    Jsonkit.Jsonschema.make
+      (assoc
+         [
+           ( "$defs",
+             assoc
+               [
+                 ( "outer",
+                   assoc
+                     [
+                       "$defs", assoc [ "t", const "inner" ];
+                       "$ref", string "#/$defs/t";
+                     ] );
+                 "t", const "outer";
+               ] );
+           "$ref", string "#/$defs/t";
+         ])
+
+  let mixed_collision =
+    Jsonkit.Jsonschema.make
+      ~definitions:
+        [ "same", const "same"; "different", const "existing" ]
+      (assoc
+         [
+           ( "$defs",
+             assoc
+               [ "same", const "same"; "different", const "new" ] );
+           "same", ref_ "same";
+           "different", ref_ "different";
+         ])
+
+  let user_resource =
+    Jsonkit.Jsonschema.make
+      (assoc
+         [
+           ( "resource",
+             assoc
+               [
+                 "$id", string "https://example.test/resource";
+                 "$defs", assoc [ "t", const "local" ];
+                 "$ref", string "#/$defs/t";
+               ] );
+         ])
+end

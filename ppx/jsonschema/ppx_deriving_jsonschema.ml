@@ -7,8 +7,10 @@ module Attrs = Attrs.Jsonschema
 
 let deriver_name = "jsonschema"
 
+let value_name type_name = type_name ^ "_jsonschema"
+
 let value_name_pattern ~loc type_name =
-  ppat_var ~loc { txt = type_name ^ "_jsonschema"; loc }
+  ppat_var ~loc { txt = value_name type_name; loc }
 
 let create_value ~loc name value =
   [%stri
@@ -427,12 +429,8 @@ let apply_defs ~loc = function
              defs)
       in
       let base_expr =
-        [%expr
-          `Assoc
-            [
-              "$defs", `Assoc ([%e pairs_expr] @ ![%e edv]);
-              "$ref", `String [%e estring ~loc ("#/$defs/" ^ primary)];
-            ]]
+        Schema.definitions_ref ~loc primary
+          [%expr [%e pairs_expr] @ ![%e edv]]
       in
       List.fold_right
         (fun (name, s) acc ->
@@ -455,6 +453,19 @@ let apply_defs ~loc = function
                        (fun (k, _) -> not (Stdlib.String.equal k "$defs"))
                        ppx_pairs)
             | other -> other)]
+
+let annotate_manifest ~loc type_decl schema =
+  Option.fold ~none:schema
+    ~some:(fun core_type ->
+      Schema.Annotation.add_format ~loc (Attrs.td_format, type_decl)
+        core_type schema
+      |> Schema.Annotation.add_maximum ~loc
+           (Attrs.td_maximum, type_decl)
+           core_type
+      |> Schema.Annotation.add_minimum ~loc
+           (Attrs.td_minimum, type_decl)
+           core_type)
+    type_decl.ptype_manifest
 
 let str_type_decl ~ctxt ast flag_polymorphic_variant_tuple flag_ocaml_doc
     =
@@ -486,18 +497,7 @@ let str_type_decl ~ctxt ast flag_polymorphic_variant_tuple flag_ocaml_doc
              (Attribute.get Attrs.td_attrs type_decl)
       in
       let raw_schema =
-        Option.fold ~none:raw_schema
-          ~some:(fun core_type ->
-            Schema.Annotation.add_format ~loc
-              (Attrs.td_format, type_decl)
-              core_type raw_schema
-            |> Schema.Annotation.add_maximum ~loc
-                 (Attrs.td_maximum, type_decl)
-                 core_type
-            |> Schema.Annotation.add_minimum ~loc
-                 (Attrs.td_minimum, type_decl)
-                 core_type)
-          type_decl.ptype_manifest
+        annotate_manifest ~loc type_decl raw_schema
       in
       let schema =
         if is_rec then
@@ -529,41 +529,82 @@ let str_type_decl ~ctxt ast flag_polymorphic_variant_tuple flag_ocaml_doc
         List.exists (fun (_, _, is_rec, _) -> is_rec) raw_results
       in
       if any_recursive then
-        List.map
-          (fun (name, raw, _, params) ->
-            let td =
-              List.find (fun td -> td.ptype_name.txt = name) type_decls
-            in
-            let raw =
-              raw
-              |> Schema.Annotation.add_description ~loc
-                   (Attrs.td_description ~ocaml_doc:config.Attrs.ocaml_doc
-                      td)
-            in
-            let raw =
-              Option.fold ~none:raw
-                ~some:(fun core_type ->
-                  Schema.Annotation.add_format ~loc (Attrs.td_format, td)
-                    core_type raw
-                  |> Schema.Annotation.add_maximum ~loc
-                       (Attrs.td_maximum, td) core_type
-                  |> Schema.Annotation.add_minimum ~loc
-                       (Attrs.td_minimum, td) core_type)
-                td.ptype_manifest
-            in
-            let defs =
-              List.map
-                (fun (n, r, _, _) -> n, if n = name then raw else r)
-                raw_results
-            in
-            let schema =
-              wrap_type_params ~loc params
-                [%expr
-                  let ppx_eds = ref [] in
-                  [%e apply_defs ~loc (`Rec (name, defs))]]
-            in
-            create_value ~loc name schema)
-          raw_results
+        let defs = "ppx_defs_" ^ (List.hd type_decls).ptype_name.txt in
+        let defs_params =
+          List.sort_uniq String.compare
+            (List.concat_map (fun (_, _, _, params) -> params) raw_results)
+        in
+        let names, schemas =
+          List.split
+            (List.map2
+               (fun (name, raw, _, params) td ->
+                 let raw =
+                   raw
+                   |> Schema.Annotation.add_description ~loc
+                        (Attrs.td_description
+                           ~ocaml_doc:config.Attrs.ocaml_doc td)
+                 in
+                 let raw =
+                   annotate_manifest ~loc td raw
+                 in
+                 let schema =
+                   [%expr
+                     let ppx_eds = ref [] in
+                     let ppx_defs =
+                       [%e
+                         eapply ~loc (evar ~loc defs)
+                           (List.map (evar ~loc) defs_params
+                           @ [ [%expr ppx_eds] ])]
+                     in
+                     let ppx_body = [%e raw] in
+                     [%e
+                       Schema.definitions_ref ~loc name
+                         [%expr
+                           Stdlib.List.map
+                             (fun (n, body) ->
+                               ( n,
+                                 if
+                                   Stdlib.String.equal n
+                                     [%e estring ~loc name]
+                                 then ppx_body
+                                 else body () ))
+                             ppx_defs
+                           @ !ppx_eds]]]
+                 in
+                 ( name,
+                   wrap_type_params ~loc params schema ))
+               raw_results type_decls)
+        in
+        let pattern =
+          ppat_tuple ~loc (List.map (value_name_pattern ~loc) names)
+        in
+        let values = List.map value_name names in
+        let schemas =
+          List.fold_right2
+            (fun value schema body ->
+              [%expr
+                let [%p pvar ~loc value] = [%e schema] in
+                [%e body]])
+            values schemas
+            (pexp_tuple ~loc (List.map (evar ~loc) values))
+        in
+        let bodies =
+          elist ~loc
+            (List.map
+               (fun (name, raw, _, _) ->
+                 [%expr [%e estring ~loc name], fun () -> [%e raw]])
+               raw_results)
+        in
+        let definitions =
+          wrap_type_params ~loc defs_params
+            [%expr (fun ppx_eds -> [%e bodies]) [@warning "-27"]]
+        in
+        [
+          [%stri
+            let[@warning "-32-39"] [%p pattern] =
+              let [%p pvar ~loc defs] = [%e definitions] in
+              [%e schemas]];
+        ]
       else
         List.map
           (fun (name, raw, _, params) ->

@@ -590,7 +590,6 @@
     },
     {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "$id": "file://ppx/jsonschema/test/cases.ml:78",
       "$defs": {
         "tree": {
           "anyOf": [
@@ -2005,42 +2004,23 @@
     },
     {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "self_ref": {
+          "type": "object",
+          "properties": {
+            "children": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/self_ref" }
+            }
+          },
+          "required": [ "children" ],
+          "additionalProperties": true
+        }
+      },
       "type": "object",
       "properties": {
-        "b": {
-          "$id": "file://ppx/jsonschema/test/cases.ml:338",
-          "$defs": {
-            "self_ref": {
-              "type": "object",
-              "properties": {
-                "children": {
-                  "type": "array",
-                  "items": { "$ref": "#/$defs/self_ref" }
-                }
-              },
-              "required": [ "children" ],
-              "additionalProperties": true
-            }
-          },
-          "$ref": "#/$defs/self_ref"
-        },
-        "a": {
-          "$id": "file://ppx/jsonschema/test/cases.ml:338",
-          "$defs": {
-            "self_ref": {
-              "type": "object",
-              "properties": {
-                "children": {
-                  "type": "array",
-                  "items": { "$ref": "#/$defs/self_ref" }
-                }
-              },
-              "required": [ "children" ],
-              "additionalProperties": true
-            }
-          },
-          "$ref": "#/$defs/self_ref"
-        }
+        "b": { "$ref": "#/$defs/self_ref" },
+        "a": { "$ref": "#/$defs/self_ref" }
       },
       "required": [ "b", "a" ],
       "additionalProperties": true
@@ -2124,45 +2104,34 @@
     {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "$defs": {
+        "filter": {
+          "anyOf": [
+            {
+              "type": "array",
+              "prefixItems": [ { "const": "Atom" }, { "type": "integer" } ],
+              "unevaluatedItems": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "array",
+              "prefixItems": [
+                { "const": "Group" },
+                { "type": "array", "items": { "$ref": "#/$defs/filter" } },
+                { "type": "string" }
+              ],
+              "unevaluatedItems": false,
+              "minItems": 3,
+              "maxItems": 3
+            }
+          ]
+        },
         "bool_filter": {
           "anyOf": [
             {
               "type": "array",
               "prefixItems": [
-                { "const": "BoolAtom" },
-                {
-                  "$id": "file://ppx/jsonschema/test/cases.ml:347",
-                  "$defs": {
-                    "filter": {
-                      "anyOf": [
-                        {
-                          "type": "array",
-                          "prefixItems": [
-                            { "const": "Atom" }, { "type": "integer" }
-                          ],
-                          "unevaluatedItems": false,
-                          "minItems": 2,
-                          "maxItems": 2
-                        },
-                        {
-                          "type": "array",
-                          "prefixItems": [
-                            { "const": "Group" },
-                            {
-                              "type": "array",
-                              "items": { "$ref": "#/$defs/filter" }
-                            },
-                            { "type": "string" }
-                          ],
-                          "unevaluatedItems": false,
-                          "minItems": 3,
-                          "maxItems": 3
-                        }
-                      ]
-                    }
-                  },
-                  "$ref": "#/$defs/filter"
-                }
+                { "const": "BoolAtom" }, { "$ref": "#/$defs/filter" }
               ],
               "unevaluatedItems": false,
               "minItems": 2,
@@ -2662,6 +2631,67 @@
         }
       },
       "$ref": "#/$defs/forest"
+    },
+    {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "t": {
+          "type": "object",
+          "properties": {
+            "y": { "type": "string" },
+            "next": {
+              "anyOf": [ { "$ref": "#/$defs/t" }, { "type": "null" } ]
+            }
+          },
+          "required": [ "y", "next" ],
+          "additionalProperties": true
+        },
+        "t_2": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "integer" },
+            "next": {
+              "anyOf": [ { "$ref": "#/$defs/t_2" }, { "type": "null" } ]
+            }
+          },
+          "required": [ "x", "next" ],
+          "additionalProperties": true
+        }
+      },
+      "type": "object",
+      "properties": {
+        "b": { "$ref": "#/$defs/t" },
+        "a": { "$ref": "#/$defs/t_2" }
+      },
+      "required": [ "b", "a" ],
+      "additionalProperties": true
+    },
+    {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "t_2": { "const": "inner" },
+        "outer": { "$ref": "#/$defs/t_2" },
+        "t": { "const": "outer" }
+      },
+      "$ref": "#/$defs/t"
+    },
+    {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "same": { "const": "same" },
+        "different": { "const": "existing" },
+        "different_2": { "const": "new" }
+      },
+      "same": { "$ref": "#/$defs/same" },
+      "different": { "$ref": "#/$defs/different_2" }
+    },
+    {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "resource": {
+        "$id": "https://example.test/resource",
+        "$defs": { "t": { "const": "local" } },
+        "$ref": "#/$defs/t"
+      }
     }
   ]
 }
