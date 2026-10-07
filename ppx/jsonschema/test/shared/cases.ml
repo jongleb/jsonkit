@@ -539,6 +539,39 @@ end
 type same_name = { a : Same_name_a.t; b : Same_name_b.t }
 [@@deriving jsonschema]
 
+module Same_ref_a = struct
+  type t = { foo : t option; u : u }
+  and u = { x : int } [@@deriving jsonschema]
+end
+
+module Same_ref_b = struct
+  type t = { foo : t option; u : u }
+  and u = { x : string } [@@deriving jsonschema]
+end
+
+type same_ref = { a : Same_ref_a.t; b : Same_ref_b.t }
+[@@deriving jsonschema]
+
+type described_a = { b : described_b option }
+[@@jsonschema.description "A"]
+
+and described_b = { a : described_a option }
+[@@jsonschema.description "B"] [@@deriving jsonschema]
+
+type described_pair = { x : described_a; y : described_b }
+[@@deriving jsonschema]
+
+type 'a wrap = Wrap of 'a wrap option | Value of 'a
+[@@deriving jsonschema]
+
+type 'a described_box = { item : 'a } [@@jsonschema.description "Box"]
+
+and described_tag = string
+[@@jsonschema.description "Tag"] [@@deriving jsonschema]
+
+type wrapped_a = Wrapped_a of wrapped_b | Wrapped_stop
+and wrapped_b = Wrapped_b of wrapped_a wrap [@@deriving jsonschema]
+
 module Hoist = struct
   let assoc fields : Jsonkit.Jsonschema.t = `Assoc fields
   let string value : Jsonkit.Jsonschema.t = `String value
@@ -565,13 +598,11 @@ module Hoist = struct
 
   let mixed_collision =
     Jsonkit.Jsonschema.make
-      ~definitions:
-        [ "same", const "same"; "different", const "existing" ]
+      ~definitions:[ "same", const "same"; "different", const "existing" ]
       (assoc
          [
            ( "$defs",
-             assoc
-               [ "same", const "same"; "different", const "new" ] );
+             assoc [ "same", const "same"; "different", const "new" ] );
            "same", ref_ "same";
            "different", ref_ "different";
          ])

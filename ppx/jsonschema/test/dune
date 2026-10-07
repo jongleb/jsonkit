@@ -115,3 +115,14 @@
  (libraries jsonkit jsonkit.jsonschema)
  (preprocess
   (pps jsonkit.ppx)))
+
+(test
+ (name schema_properties)
+ (modules schema_properties)
+ (enabled_if
+  (= %{profile} dev))
+ (libraries
+  jsonkit
+  jsonkit.jsonschema
+  cases_support
+  generate_schemas_support))

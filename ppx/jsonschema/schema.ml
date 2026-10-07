@@ -4,8 +4,7 @@ open Ast_builder.Default
 let const ~loc value =
   [%expr `Assoc [ "const", `String [%e estring ~loc value] ]]
 
-let ref_target ~loc type_name =
-  estring ~loc ("#/$defs/" ^ type_name)
+let ref_target ~loc type_name = estring ~loc ("#/$defs/" ^ type_name)
 
 let type_ref ~loc type_name =
   [%expr `Assoc [ "$ref", `String [%e ref_target ~loc type_name] ]]
